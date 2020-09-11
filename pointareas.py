@@ -10,7 +10,7 @@ def visualize_pointareas(mesh, areas):
     color_areas[:,0] = red_areas
     mp.plot(mesh.vertices.numpy(), mesh.faces.numpy(), c=color_areas.numpy())
 
-def calculate_pointareas(mesh):
+def compute_pointareas(mesh):
     verts = mesh.vertices
     faces = mesh.faces
 
@@ -58,4 +58,4 @@ def calculate_pointareas(mesh):
             pointareas[faces[i,1]] += cornerareas[i,1]
             pointareas[faces[i,2]] += cornerareas[i,2]
 
-    return pointareas
+    return pointareas, cornerareas
