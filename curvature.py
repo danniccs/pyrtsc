@@ -1,6 +1,7 @@
 import torch
 import kaolin as kal
 import numpy as np
+import meshplot as mp
 from utils import compute_vertex_normals
 from pointareas import compute_pointareas
 
@@ -149,3 +150,15 @@ def compute_curvatures(mesh):
                                                                   normals[i])
 
     return curv1, curv12, curv2, pdir1, pdir2
+
+def visualize_curvatures(mesh, k1, k2):
+    max_k1 = torch.max(k1)
+    max_k2 = torch.max(k2)
+    red_k1 = k1 / max_k1
+    red_k2 = k2 / max_k2
+    color_k1 = torch.zeros(mesh.vertices.shape, dtype=mesh.vertices.dtype)
+    color_k1[:,0] = red_k1
+    color_k2 = torch.zeros(mesh.vertices.shape, dtype=mesh.vertices.dtype)
+    color_k2[:,0] = red_k2
+    mp.plot(mesh.vertices.numpy(), mesh.faces.numpy(), c=color_k1.numpy())
+    mp.plot(mesh.vertices.numpy(), mesh.faces.numpy(), c=color_k2.numpy())
