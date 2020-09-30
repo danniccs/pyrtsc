@@ -38,10 +38,12 @@ def proj_curv(old_u, old_v, old_ku, old_kuv, old_kv, new_u, new_v):
     v1 = r_new_u.dot(old_v)
     u2 = r_new_v.dot(old_u)
     v2 = r_new_v.dot(old_v)
+
     new_ku = old_ku * u1**2 + old_kuv * (2.0 * u1 * v1) + old_kv * v1**2
     new_kuv = old_ku * u1*u2 + old_kuv * (u1*v2 + u2*v1) + old_kv * v1*v2;
     new_kv  = old_ku * u2**2 + old_kuv * (2.0 * u2 * v2) + old_kv * v2**2;
     return new_ku, new_kuv, new_kv
+
 
 # Dado un tensor de curvatura (el mapa fundamental II), esta funcion encuentra
 # las direcciones de curvatura principales y las curvaturas principales.
@@ -76,7 +78,9 @@ def diagonalize_curv(old_u, old_v, ku, kuv, kv, new_norm):
 
     return pdir1, pdir2, k1, k2
 
-def compute_curvatures(mesh):
+# Computa las curvaturas principales y sus direcciones sobre la malla
+# method puede ser "lstsq" o "cholesky"
+def compute_curvatures(mesh, method="lstsq"):
     verts = mesh.vertices
     faces = mesh.faces
     normals = compute_vertex_normals(mesh)
@@ -113,12 +117,12 @@ def compute_curvatures(mesh):
         b = torch.nn.functional.normalize(b, dim=0)
 
         # Estimo la curvatura basado en la variacion de las normales
-        m = torch.zeros(3)
+        m = torch.zeros(3, 1)
         w = torch.zeros(3,3)
         for j in range(0, 3):
             u = edges[j].dot(t)
             v = edges[j].dot(b)
-            w[0,0] += u**2
+            w[0,0] += u*u
             w[0,1] += u*v
             w[2,2] += v*v
 
@@ -133,7 +137,14 @@ def compute_curvatures(mesh):
         w[1,2] = w[0,1]
 
         # Encuentro la solucion de minimos cuadrados
-        m = torch.lstsq(m, w).solution
+        # Agregué un if para seleccionar un método
+        if method == "lstsq":
+            m = torch.lstsq(m, w).solution
+        elif method == "cholesky":
+            chol = torch.cholesky(w)
+            m = torch.cholesky_solve(m, chol)
+
+        # Sumar los valores computados en los vertices
         for j in range(0, 3):
             vj = faces[i, j].item()
             c1, c12, c2 = proj_curv(t, b, m[0].item(), m[1].item(), m[2].item(),
@@ -149,16 +160,10 @@ def compute_curvatures(mesh):
                                                                   curv1[i], curv12[i], curv2[i],
                                                                   normals[i])
 
-    return curv1, curv12, curv2, pdir1, pdir2
+    return curv1, curv2, pdir1, pdir2
 
 def visualize_curvatures(mesh, k1, k2):
-    max_k1 = torch.max(k1)
-    max_k2 = torch.max(k2)
-    red_k1 = k1 / max_k1
-    red_k2 = k2 / max_k2
-    color_k1 = torch.zeros(mesh.vertices.shape, dtype=mesh.vertices.dtype)
-    color_k1[:,0] = red_k1
-    color_k2 = torch.zeros(mesh.vertices.shape, dtype=mesh.vertices.dtype)
-    color_k2[:,0] = red_k2
-    mp.plot(mesh.vertices.numpy(), mesh.faces.numpy(), c=color_k1.numpy())
-    mp.plot(mesh.vertices.numpy(), mesh.faces.numpy(), c=color_k2.numpy())
+    mp.plot(mesh.vertices.numpy(), mesh.faces.numpy(), c=k1.numpy(),
+            shading={"colormap": "bwr"})
+    mp.plot(mesh.vertices.numpy(), mesh.faces.numpy(), c=k2.numpy(),
+            shading={"colormap": "bwr"})
