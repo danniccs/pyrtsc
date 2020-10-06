@@ -2,13 +2,21 @@ import torch
 import kaolin as kal
 import numpy as np
 import meshplot as mp
-from utils import compute_vertex_normals
+from normals_lib import compute_simple_vertex_normals
 from pointareas import compute_pointareas
+
+
+pathdir= "/home/danniccs/torch_pdir.txt"
+pathpre = "/home/danniccs/torch_matrix_pre.txt"
+pathpost = "/home/danniccs/torch_matrix_post.txt"
+pathproj = "/home/danniccs/torch_proj_vals.txt"
+pathproj_curv = "/home/danniccs/torch_proj_curv.txt"
+pathalmost= "/home/danniccs/torch_almost.txt"
 
 # Funcion para rotar un sistema de coordenadas para que sea perpendicular a la normal dada
 def rot_coord_sys(old_u, old_v, new_norm):
-    new_u = old_u
-    new_v = old_v
+    new_u = old_u.clone()
+    new_v = old_v.clone()
     old_norm = torch.cross(old_u, old_v)
     ndot = torch.dot(old_norm, new_norm)
 
@@ -25,23 +33,29 @@ def rot_coord_sys(old_u, old_v, new_norm):
 
     # Resta el componente en la perpendicular vieja, y agrega al componente en la nueva
     # perpendicular
-    new_u -= dperp * (new_u.dot(perp_old))
-    new_v -= dperp * (new_v.dot(perp_old))
+    new_u -= dperp * (torch.dot(new_u, perp_old))
+    new_v -= dperp * (torch.dot(new_v, perp_old))
+
     return new_u, new_v
 
 # Funcion para reproyectar un tensor de curvatura de una base (old_u, old_v)
 # a una base (new_u, new_v)
 def proj_curv(old_u, old_v, old_ku, old_kuv, old_kv, new_u, new_v):
+
     r_new_u, r_new_v = rot_coord_sys(new_u, new_v, torch.cross(old_u, old_v))
 
-    u1 = r_new_u.dot(old_u)
-    v1 = r_new_u.dot(old_v)
-    u2 = r_new_v.dot(old_u)
-    v2 = r_new_v.dot(old_v)
+    u1 = torch.dot(r_new_u, old_u)
+    v1 = torch.dot(r_new_u, old_v)
+    u2 = torch.dot(r_new_v, old_u)
+    v2 = torch.dot(r_new_v, old_v)
 
     new_ku = old_ku * u1**2 + old_kuv * (2.0 * u1 * v1) + old_kv * v1**2
     new_kuv = old_ku * u1*u2 + old_kuv * (u1*v2 + u2*v1) + old_kv * v1*v2;
     new_kv  = old_ku * u2**2 + old_kuv * (2.0 * u2 * v2) + old_kv * v2**2;
+
+    with open(pathproj_curv, "a") as myfile:
+        myfile.write("ku: {} kuv: {} kv: {}\n".format(old_ku, old_kuv, old_kv))
+
     return new_ku, new_kuv, new_kv
 
 
@@ -81,9 +95,22 @@ def diagonalize_curv(old_u, old_v, ku, kuv, kv, new_norm):
 # Computa las curvaturas principales y sus direcciones sobre la malla
 # method puede ser "lstsq" o "cholesky"
 def compute_curvatures(mesh, method="lstsq"):
+    myfile = open(pathpre, "w")
+    myfile.close()
+    myfile = open(pathpost, "w")
+    myfile.close()
+    myfile = open(pathproj, "w")
+    myfile.close()
+    myfile = open(pathproj_curv, "w")
+    myfile.close()
+    myfile = open(pathalmost, "w")
+    myfile.close()
+    with open(pathdir, "w") as myfile:
+        pass
+
     verts = mesh.vertices
     faces = mesh.faces
-    normals = compute_vertex_normals(mesh)
+    normals = compute_simple_vertex_normals(mesh)
     pointareas, cornerareas = compute_pointareas(mesh)
 
     pdir1 = torch.zeros(verts.shape, dtype=verts.dtype)
@@ -94,13 +121,16 @@ def compute_curvatures(mesh, method="lstsq"):
 
     # Creo un sistema de coordenadas inicial por cada vertice
     for i in range(0, faces.shape[0]):
-        pdir1[faces[i, 0]] = verts[faces[i, 1]] - verts[faces[i, 0]]
-        pdir1[faces[i, 1]] = verts[faces[i, 2]] - verts[faces[i, 1]]
-        pdir1[faces[i, 2]] = verts[faces[i, 0]] - verts[faces[i, 2]]
+        pdir1[faces[i,0]] = verts[faces[i,1]] - verts[faces[i,0]]
+        pdir1[faces[i,1]] = verts[faces[i,2]] - verts[faces[i,1]]
+        pdir1[faces[i,2]] = verts[faces[i,0]] - verts[faces[i,2]]
 
     pdir1 = torch.cross(pdir1, normals)
     pdir1 = torch.nn.functional.normalize(pdir1)
     pdir2 = torch.cross(normals, pdir1)
+    with open(pathdir, "a") as myfile:
+        for i in range(0, pdir1.shape[0]):
+            myfile.write("pdir1: {} pdir2: {}\n".format(pdir1[i], pdir2[i]))
 
     # Computar curvatura por cara
     for i in range(0, faces.shape[0]):
@@ -117,7 +147,7 @@ def compute_curvatures(mesh, method="lstsq"):
         b = torch.nn.functional.normalize(b, dim=0)
 
         # Estimo la curvatura basado en la variacion de las normales
-        m = torch.zeros(3, 1)
+        m = torch.zeros(3,1)
         w = torch.zeros(3,3)
         for j in range(0, 3):
             u = edges[j].dot(t)
@@ -136,6 +166,11 @@ def compute_curvatures(mesh, method="lstsq"):
         w[1,1] = w[0,0] + w[2,2]
         w[1,2] = w[0,1]
 
+        with open(pathpre, "a") as myfile:
+            for j in range(0, 3):
+                myfile.write("{} | {} | {} \n".format(w[j, 0], w[j, 1], w[j, 2]))
+            myfile.write("\n" + "{} | {} | {} \n.\n\n".format(m[0].item(), m[1].item(), m[2].item()))
+
         # Encuentro la solucion de minimos cuadrados
         # Agregué un if para seleccionar un método
         if method == "lstsq":
@@ -144,21 +179,32 @@ def compute_curvatures(mesh, method="lstsq"):
             chol = torch.cholesky(w)
             m = torch.cholesky_solve(m, chol)
 
-        # Sumar los valores computados en los vertices
-        for j in range(0, 3):
-            vj = faces[i, j].item()
-            c1, c12, c2 = proj_curv(t, b, m[0].item(), m[1].item(), m[2].item(),
-                                    pdir1[vj], pdir2[vj])
-            wt = cornerareas[i, j].item() / pointareas[vj].item()
-            curv1[vj] += wt * c1
-            curv12[vj] += wt * c12
-            curv2[vj] += wt * c2
+        with open(pathpost, "a") as myfile:
+            for j in range(0, 3):
+                myfile.write("{} | {} | {} \n".format(w[j, 0], w[j, 1], w[j, 2]))
+            myfile.write("\n" + "{} | {} | {} \n.\n\n".format(m[0].item(), m[1].item(), m[2].item()))
 
-    # Computo direcciones y curvaturas principales en cada vertice
-    for i in range(0, verts.shape[0]):
-        pdir1[i], pdir2[i], curv1[i], curv2[i] = diagonalize_curv(pdir1[i], pdir2[i],
-                                                                  curv1[i], curv12[i], curv2[i],
-                                                                  normals[i])
+        # Sumar los valores computados en los vertices
+        with open(pathproj, "a") as myfile:
+            for j in range(0, 3):
+                vj = faces[i,j]
+                c1, c12, c2 = proj_curv(t, b, m[0].item(), m[1].item(), m[2].item(),
+                                        pdir1[vj], pdir2[vj])
+                wt = cornerareas[i,j] / pointareas[vj]
+                myfile.write("c1: {} c2: {} c12: {} wt: {}\n".format(c1, c2, c12, wt))
+                myfile.write("pdir1: {} pdir2: {} \n".format(pdir1[vj], pdir2[vj]))
+                myfile.write("---------------------------\n")
+                curv1[vj] += wt * c1
+                curv12[vj] += wt * c12
+                curv2[vj] += wt * c2
+
+    with open(pathalmost, "a") as myfile:
+        # Computo direcciones y curvaturas principales en cada vertice
+        for i in range(0, verts.shape[0]):
+            myfile.write("curv1: {} curv12: {} curv2: {}\n".format(curv1[i], curv12[i], curv2[i]))
+            pdir1[i], pdir2[i], curv1[i], curv2[i] = diagonalize_curv(pdir1[i], pdir2[i],
+                                                                      curv1[i], curv12[i], curv2[i],
+                                                                      normals[i])
 
     return curv1, curv2, pdir1, pdir2
 
