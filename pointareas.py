@@ -2,12 +2,18 @@ import torch
 import meshplot as mp
 import numpy as np
 
+
+if torch.cuda.is_available():
+    device = torch.device('cuda')
+else:
+    device = torch.device('cpu')
+
 def norm_sq(v, dim):
     return torch.sum(v**2, dim=dim)
 
 def compute_pointareas(mesh):
-    verts = mesh.vertices
-    faces = mesh.faces
+    verts = mesh.vertices.to(device=device)
+    faces = mesh.faces.to(device=device)
 
     # Conseguir vectores de bordes
     e0 = verts[faces[:,2]] - verts[faces[:,1]]
@@ -24,8 +30,8 @@ def compute_pointareas(mesh):
                        l2[:,2] * (l2[:,0] + l2[:,1] - l2[:,2])], dim=1)
 
     # Calculo las areas en las esquinas en base a los pesos baricéntricos
-    pointareas = torch.zeros(verts.shape[0], dtype=verts.dtype)
-    cornerareas = torch.zeros(faces.shape, dtype=verts.dtype)
+    pointareas = torch.zeros(verts.shape[0], dtype=verts.dtype).to(device=device)
+    cornerareas = torch.zeros(faces.shape, dtype=verts.dtype).to(device=device)
 
     for i in range(0, faces.shape[0]):
             if bcw[i,0] <= 0.0:
