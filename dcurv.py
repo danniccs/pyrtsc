@@ -3,17 +3,13 @@ import math
 import curvature as curv
 from normals_lib import compute_simple_vertex_normals
 from pointareas import compute_pointareas
+from shared_algs import compute_perview
 
-
-SCTHRESH = 0.01
-SHTHRESH = 0.02
 
 if torch.cuda.is_available():
     device = torch.device('cuda')
 else:
     device = torch.device('cpu')
-
-VIEWPOS = torch.tensor([0.0, 5.0, -10.0], dtype=torch.float32)
 
 # Igual que proj_curv pero para derivadas de curvatura
 def proj_dcurv(old_u, old_v, old_dcurv, new_u, new_v):
@@ -126,48 +122,6 @@ def compute_dcurvs(mesh, method="lstsq", normals=None, pointareas=None,
 
     return dcurv
 
-def compute_perview(mesh, normals=None, curvs=None, dcurv=None):
-    verts = mesh.vertices.to(device=device)
-    faces = mesh.faces.to(device=device)
-
-    if normals == None:
-        normals = compute_simple_vertex_normals(mesh)
-
-    if curvs == None:
-        k1, k2, pdir1, pdir2 = curv.compute_curvatures(mesh)
-    else:
-        k1, k2, pdir1, pdir2 = curvs
-
-    if dcurv == None:
-        dcurv = compute_dcurvs(mesh, normals=normals, pointareas=pointareas,
-                               cornerareas=cornerareas, curvs=(k1,k2,pdir1,pdir2))
-
-    scthresh = SCTHRESH
-    shthresh = SHTHRESH
-    viewpos = VIEWPOS
-
-    ndotv = torch.zeros(verts.shape[0], dtype=torch.float32).to(device=device)
-    kr = torch.zeros(verts.shape[0], dtype=torch.float32).to(device=device)
-    viewdir = torch.zeros(verts.shape[0], 3, dtype=torch.float32).to(device=device)
-    sctest_num = torch.zeros(verts.shape[0], dtype=torch.float32).to(device=device)
-    sctest_den = torch.zeros(verts.shape[0], dtype=torch.float32).to(device=device)
-
-    for i in range(0, verts.shape[0]):
-        # Computar n.v
-        viewdir = viewpos - verts[i]
-        viewdir = viewdir / torch.norm(viewdir)
-        ndotv[i] = torch.dot(viewdir, normals[i])
-
-        u = torch.dot(viewdir, pdir1[i])
-        v = torch.dot(viewdir, pdir2[i])
-        u2 = u**2
-        v2 = v**2
-
-        # Esto en realidad es Kr * sin^2(theta)
-        kr[i] = k1[i] * u2 + k2[i] * v2
-
-    return ndotv, kr, viewdir, sctest_num, sctest_den
-
 def compute_DwKr(mesh, normals=None, curvs=None, dcurv=None):
     verts = mesh.vertices.to(device=device)
     faces = mesh.faces.to(device=device)
@@ -184,31 +138,29 @@ def compute_DwKr(mesh, normals=None, curvs=None, dcurv=None):
         dcurv = compute_dcurvs(mesh, normals=normals, pointareas=pointareas,
                                cornerareas=cornerareas, curvs=(k1,k2,pdir1,pdir2))
 
-    viewpos = VIEWPOS
     DwKr = torch.zeros(verts.shape[0], dtype=torch.float32).to(device=device)
     perview = compute_perview(mesh, normals=normals, curvs=(k1,k2,pdir1,pdir2), dcurv=dcurv)
     ndotv, _, viewdir, _, _ = perview
 
-    for i in range(0, verts.shape[0]):
-        w = viewdir - normals[i] * ndotv[i]
-        # Igual que cuando calculo dcurv, uso pdir1[i] y pdir2[i] como base del sistema de
-        # coordenadas del vértice i
-        u = torch.dot(w, pdir1[i]) * torch.norm(w)
-        v = torch.dot(w, pdir2[i]) * torch.norm(w)
-        u2 = u**2
-        v2 = v**2
+    w = viewdir - normals * ndotv[:,None]
+    # Igual que cuando calculo dcurv, uso pdir1[i] y pdir2[i] como base del sistema de
+    # coordenadas del vértice i
+    u = (w * pdir1).sum(dim=1) * torch.norm(w, dim=1)
+    v = (w * pdir2).sum(dim=1) * torch.norm(w, dim=1)
+    u2 = u**2
+    v2 = v**2
 
-        #cos2phi = torch.dot(w, pdir1[i])
-        #sin2phi = 1.0 - cos2phi
-        #kr = k1[i] * cos2phi + k2[i] * sin2phi
+    #cos2phi = torch.dot(w, pdir1[i])
+    #sin2phi = 1.0 - cos2phi
+    #kr = k1[i] * cos2phi + k2[i] * sin2phi
 
-        # C(w,w,w) - 2Kcot(theta)
-        DwKr[i] = ( u2 * (u*dcurv[i,0] + 3.0*v*dcurv[i,1])
-                  + v2 * (3.0*u*dcurv[i,2] + v*dcurv[i,3]))
+    # C(w,w,w) - 2Kcot(theta)
+    DwKr = ( u2 * (u*dcurv[:,0] + 3.0*v*dcurv[:,1])
+           + v2 * (3.0*u*dcurv[:,2] + v*dcurv[:,3]))
 
-        K = k1[i] * k2[i]
-        sintheta = math.sqrt(1.0 - ndotv[i]**2)
-        cot = ndotv[i] / sintheta
-        DwKr[i] += 2.0 * K * cot
+    K = k1 * k2
+    sintheta = torch.sqrt(torch.add(-ndotv**2, 1.0))
+    cot = ndotv / sintheta
+    DwKr += 2.0 * K * cot
 
     return DwKr
