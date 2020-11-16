@@ -15,44 +15,47 @@ else:
 def rot_coord_sys(old_u, old_v, new_norm):
     new_u = old_u.clone()
     new_v = old_v.clone()
-    old_norm = torch.cross(old_u, old_v)
-    ndot = torch.dot(old_norm, new_norm)
+    perp_old = torch.zeros(new_u.shape, dtype=new_u.dtype).to(device=device)
+    dperp = torch.zeros(new_u.shape, dtype=new_u.dtype).to(device=device)
+    old_norm = torch.cross(old_u, old_v, dim=1)
+    ndot = (old_norm * new_norm).sum(dim=1)
 
-    if ndot <= -1.0:
-        new_u = -new_u
-        new_v = -new_v
-        return new_u, new_v
+    for i in range(0, ndot.shape[0]):
+        if ndot[i] <= -1.0:
+            new_u[i] = -new_u[i]
+            new_v[i] = -new_v[i]
+            # Ya no retorno nada, simplemente no toco el valor en este i
+            #return new_u, new_v
+        else:
+            # La componente de new_norm perpendicular a old_norm
+            perp_old[i] = new_norm[i] - ndot[i] * old_norm[i]
 
-    # La componente de new_norm perpendicular a old_norm
-    perp_old = new_norm - ndot * old_norm
+            # La diferencia de las perpendiculares (de old_norm y new_norm), ya normalizada
+            dperp[i] = 1.0 / (1 + ndot[i]) * (old_norm[i] + new_norm[i])
 
-    # La diferencia de las perpendiculares (de old_norm y new_norm), ya normalizada
-    dperp = 1.0 / (1 + ndot) * (old_norm + new_norm)
-
-    # Resta el componente en la perpendicular vieja, y agrega al componente en la nueva
-    # perpendicular
-    new_u -= dperp * (torch.dot(new_u, perp_old))
-    new_v -= dperp * (torch.dot(new_v, perp_old))
+            # Resta el componente en la perpendicular vieja, y agrega al componente en la nueva
+            # perpendicular
+            new_u[i] -= dperp[i] * (torch.dot(new_u[i], perp_old[i]))
+            new_v[i] -= dperp[i] * (torch.dot(new_v[i], perp_old[i]))
 
     return new_u, new_v
 
 # Funcion para reproyectar un tensor de curvatura de una base (old_u, old_v)
 # a una base (new_u, new_v)
 def proj_curv(old_u, old_v, old_ku, old_kuv, old_kv, new_u, new_v):
+    r_new_u, r_new_v = rot_coord_sys(new_u, new_v, torch.cross(old_u, old_v, dim=1))
 
-    r_new_u, r_new_v = rot_coord_sys(new_u, new_v, torch.cross(old_u, old_v))
-
-    u1 = torch.dot(r_new_u, old_u)
-    v1 = torch.dot(r_new_u, old_v)
-    u2 = torch.dot(r_new_v, old_u)
-    v2 = torch.dot(r_new_v, old_v)
+    # Productos punto entre r_new_u[i] y old_u[i] para todo i
+    u1 = (r_new_u * old_u).sum(dim=1)
+    v1 = (r_new_u * old_v).sum(dim=1)
+    u2 = (r_new_v * old_u).sum(dim=1)
+    v2 = (r_new_v * old_v).sum(dim=1)
 
     new_ku = old_ku * u1**2 + old_kuv * (2.0 * u1 * v1) + old_kv * v1**2
     new_kuv = old_ku * u1*u2 + old_kuv * (u1*v2 + u2*v1) + old_kv * v1*v2;
-    new_kv  = old_ku * u2**2 + old_kuv * (2.0 * u2 * v2) + old_kv * v2**2;
+    new_kv = old_ku * u2**2 + old_kuv * (2.0 * u2 * v2) + old_kv * v2**2;
 
     return new_ku, new_kuv, new_kv
-
 
 # Dado un tensor de curvatura (el mapa fundamental II), esta funcion encuentra
 # las direcciones de curvatura principales y las curvaturas principales.
@@ -61,29 +64,33 @@ def proj_curv(old_u, old_v, old_ku, old_kuv, old_kv, new_u, new_v):
 def diagonalize_curv(old_u, old_v, ku, kuv, kv, new_norm):
     r_old_u, r_old_v = rot_coord_sys(old_u, old_v, new_norm)
 
-    c = 1
-    s = 0
-    tt = 0
-    if kuv != 0.0:
-        # Rotacion Jacobiana para diagonalizar
-        h = 0.5 * (kv - ku) / kuv
-        if h < 0.0:
-            tt = 1.0 / (h - torch.sqrt(1.0 + h**2))
-        else:
-            tt = 1.0 / (h + torch.sqrt(1.0 + h**2))
-        c = 1.0 / torch.sqrt(1.0 + tt**2)
-        s = tt * c
+    c = torch.ones(kuv.shape[0], dtype=torch.float32).to(device=device)
+    s = torch.zeros(kuv.shape[0], dtype=torch.float32).to(device=device)
+    tt = torch.zeros(kuv.shape[0], dtype=torch.float32).to(device=device)
+    for i in range(0, kuv.shape[0]):
+        if kuv[i] != 0.0:
+            # Rotacion Jacobiana para diagonalizar
+            h = 0.5 * (kv[i] - ku[i]) / kuv[i]
+            if h < 0.0:
+                tt[i] = 1.0 / (h - torch.sqrt(1.0 + h**2))
+            else:
+                tt[i] = 1.0 / (h + torch.sqrt(1.0 + h**2))
+            c[i] = 1.0 / torch.sqrt(1.0 + tt[i]**2)
+            s[i] = tt[i] * c[i]
 
     k1 = ku - tt * kuv
     k2 = kv + tt * kuv
 
-    if abs(k1) >= abs(k2):
-        pdir1 = c * r_old_u - s * r_old_v
-    else:
-        k1, k2 = k2, k1
-        pdir1 = s * r_old_u + c * r_old_v
+    pdir1 = torch.zeros(old_u.shape, dtype=torch.float32).to(device=device)
 
-    pdir2 = torch.cross(new_norm, pdir1)
+    for i in range(0, kuv.shape[0]):
+        if abs(k1[i]) >= abs(k2[i]):
+            pdir1[i] = c[i] * r_old_u[i] - s[i] * r_old_v[i]
+        else:
+            k1[i], k2[i] = k2[i], k1[i]
+            pdir1[i] = s[i] * r_old_u[i] + c[i] * r_old_v[i]
+
+    pdir2 = torch.cross(new_norm, pdir1, dim=1)
 
     return pdir1, pdir2, k1, k2
 
@@ -112,6 +119,7 @@ def compute_curvatures(mesh, method="lstsq"):
     pdir2 = torch.cross(normals, pdir1)
 
     edges = torch.zeros(list(faces.shape) + [3], dtype=verts.dtype).to(device=device)
+
     # Computar curvatura por cara
     for i in range(0, faces.shape[0]):
         # Bordes
@@ -120,63 +128,57 @@ def compute_curvatures(mesh, method="lstsq"):
                                 verts[faces[i,1]] - verts[faces[i,0]]], dim=0)
 
     # Uso el marco de Frenet por cada cara
-    # Esto probablemente se pueda hacer mas eficiente, sacandolo del for y usando operaciones
-    # sobre un gran tensor
     t = edges[:,0]
     t = torch.nn.functional.normalize(t, dim=1)
     n = torch.cross(edges[:,0], edges[:,1])
     b = torch.cross(n, t)
     b = torch.nn.functional.normalize(b, dim=1)
 
+    m = torch.zeros(faces.shape[0], 3, 1, dtype=torch.float32).to(device=device)
+    w = torch.zeros(faces.shape[0], 3, 3, dtype=torch.float32).to(device=device)
+
+    # Estimo la curvatura basado en la variacion de las normales
+    for j in range(0, 3):
+        u = (edges[:,j] * t).sum(dim=1)
+        v = (edges[:,j] * b).sum(dim=1)
+        w[:,0,0] += u*u
+        w[:,0,1] += u*v
+        w[:,2,2] += v*v
+
+        dn = normals[faces[:, (j-1) % 3]] - normals[faces[:, (j+1) % 3]]
+        dnu = (dn * t).sum(dim=1)
+        dnv = (dn * b).sum(dim=1)
+        m[:,0] += (dnu * u).view(m.shape[0], 1)
+        m[:,1] += (dnu * v + dnv * u).view(m.shape[0], 1)
+        m[:,2] += (dnv * v).view(m.shape[0], 1)
+
+    w[:,1,1] = w[:,0,0] + w[:,2,2]
+    w[:,1,2] = w[:,0,1]
+
     for i in range(0, faces.shape[0]):
-        # Estimo la curvatura basado en la variacion de las normales
-        m = torch.zeros(3,1).to(device=device)
-        w = torch.zeros(3,3).to(device=device)
-        for j in range(0, 3):
-            u = edges[i,j].dot(t[i])
-            v = edges[i,j].dot(b[i])
-            w[0,0] += u*u
-            w[0,1] += u*v
-            w[2,2] += v*v
-
-            dn = normals[faces[i, (j-1) % 3]] - normals[faces[i, (j+1) % 3]]
-            dnu = dn.dot(t[i])
-            dnv = dn.dot(b[i])
-            m[0] += dnu * u
-            m[1] += dnu * v + dnv * u
-            m[2] += dnv * v
-
-        w[1,1] = w[0,0] + w[2,2]
-        w[1,2] = w[0,1]
-
         # Encuentro la solucion de minimos cuadrados
         # Agregué un if para seleccionar un método
         if method == "lstsq":
-            m = torch.lstsq(m, w).solution
+            m[i] = torch.lstsq(m[i], w[i]).solution
         elif method == "cholesky":
-            chol = torch.cholesky(w)
-            m = torch.cholesky_solve(m, chol)
+            chol = torch.cholesky(w[i])
+            m[i] = torch.cholesky_solve(m[i], chol)
 
-        # Sumar los valores computados en los vertices
-        for j in range(0, 3):
-            vj = faces[i,j]
-            c1, c12, c2 = proj_curv(t[i], b[i], m[0].item(), m[1].item(), m[2].item(),
-                                    pdir1[vj], pdir2[vj])
-            wt = cornerareas[i,j] / pointareas[vj]
-            curv1[vj] += wt * c1
-            curv12[vj] += wt * c12
-            curv2[vj] += wt * c2
+    # Sumar los valores computados en los vertices
+    for j in range(0, 3):
+        vj = faces[:,j]
+        c1, c12, c2 = proj_curv(t, b, m[:,0].flatten(), m[:,1].flatten(), m[:,2].flatten(),
+                                pdir1[vj], pdir2[vj])
+
+        wt = cornerareas[:,j] / pointareas[vj]
+        # Sumo a curvx[i] el producto de wt[i] y cx[i]
+        # Esto debo hacerlo con un for para evitar errores de sincronización
+        for i in range(0, faces.shape[0]):
+            curv1[vj[i]] += wt[i] * c1[i]
+            curv12[vj[i]] += wt[i] * c12[i]
+            curv2[vj[i]] += wt[i] * c2[i]
 
     # Computo direcciones y curvaturas principales en cada vertice
-    for i in range(0, verts.shape[0]):
-        pdir1[i], pdir2[i], curv1[i], curv2[i] = diagonalize_curv(pdir1[i], pdir2[i],
-                                                                  curv1[i], curv12[i], curv2[i],
-                                                                  normals[i])
+    pdir1, pdir2, curv1, curv2 = diagonalize_curv(pdir1, pdir2, curv1, curv12, curv2, normals)
 
     return curv1, curv2, pdir1, pdir2
-
-def visualize_curvatures(mesh, k1, k2):
-    mp.plot(mesh.vertices.numpy(), mesh.faces.numpy(), c=k1.numpy(),
-            shading={"colormap": "bwr"})
-    mp.plot(mesh.vertices.numpy(), mesh.faces.numpy(), c=k2.numpy(),
-            shading={"colormap": "bwr"})
