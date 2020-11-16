@@ -3,7 +3,7 @@ import math
 import curvature as curv
 from normals_lib import compute_simple_vertex_normals
 from pointareas import compute_pointareas
-from shared_algs import compute_perview
+from shared_algs import compute_perview, VIEWPOS
 
 
 if torch.cuda.is_available():
@@ -145,22 +145,23 @@ def compute_DwKr(mesh, normals=None, curvs=None, dcurv=None):
     w = viewdir - normals * ndotv[:,None]
     # Igual que cuando calculo dcurv, uso pdir1[i] y pdir2[i] como base del sistema de
     # coordenadas del vértice i
-    u = (w * pdir1).sum(dim=1) * torch.norm(w, dim=1)
-    v = (w * pdir2).sum(dim=1) * torch.norm(w, dim=1)
+    u = (w * pdir1).sum(dim=1)
+    v = (w * pdir2).sum(dim=1)
     u2 = u**2
     v2 = v**2
 
-    #cos2phi = torch.dot(w, pdir1[i])
-    #sin2phi = 1.0 - cos2phi
-    #kr = k1[i] * cos2phi + k2[i] * sin2phi
+    cosphi = (w * pdir1).sum(dim=1)
+    cos2phi = cosphi**2
+    sin2phi = torch.add(-cos2phi, 1.0)
+    sinphi = torch.sqrt(sin2phi)
+    kr = k1 * cos2phi + k2 * sin2phi
 
-    # C(w,w,w) - 2Kcot(theta)
+    # DwKr = C(w,w,w) + 2Kcot(theta)
     DwKr = ( u2 * (u*dcurv[:,0] + 3.0*v*dcurv[:,1])
            + v2 * (3.0*u*dcurv[:,2] + v*dcurv[:,3]))
 
     K = k1 * k2
-    sintheta = torch.sqrt(torch.add(-ndotv**2, 1.0))
-    cot = ndotv / sintheta
+    cot = cosphi / sinphi
     DwKr += 2.0 * K * cot
 
-    return DwKr
+    return DwKr, kr

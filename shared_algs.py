@@ -10,7 +10,7 @@ if torch.cuda.is_available():
 else:
     device = torch.device('cpu')
 
-VIEWPOS = torch.tensor([0.0, 5.0, -10.0], dtype=torch.float32).to(device=device)
+VIEWPOS = torch.tensor([0.0, 0.0, -2.0], dtype=torch.float32).to(device=device)
 
 def compute_perview(mesh, normals=None, curvs=None, dcurv=None, draw_apparent=False):
     verts = mesh.vertices.to(device=device)
@@ -100,12 +100,12 @@ def find_face_zeros_helper(mesh, v0, v1, v2, val, test_num, test_den):
     if z1 == 0.0:
         z1 = z2
         z2 = 0.0
-    else if z2 < z1:
+    elif z2 < z1:
         z1, z2 = z2, z1
 
     # Si el principio del segmento es invalido, y no hay cruces, todo el segmento
     # es invalido.
-    if !valid1 && !z1 && !z2:
+    if not valid1 or not z1 or not z2:
         return None, None
 
     return p1, p2
@@ -130,10 +130,10 @@ def find_face_zeros(mesh, v0, v1, v2, val, test_num, test_den, ndtov):
     if ((val[v0] < 0.0 and val[v1] >= 0.0 and val[v2] >= 0.0) or
         (val[v0] > 0.0 and val[v1] <= 0.0 and val[v2] <= 0.0)):
         p1,p2 = find_face_zeros_helper(mesh, v0, v1, v2, val, test_num, test_den)
-    else if ((val[v1] < 0.0 and val[v2] >= 0.0 and val[v0] >= 0.0) or
+    elif ((val[v1] < 0.0 and val[v2] >= 0.0 and val[v0] >= 0.0) or
              (val[v1] > 0.0 and val[v2] <= 0.0 and val[v0] <= 0.0)):
         p1,p2 = find_face_zeros_helper(mesh, v1, v2, v0, val, test_num, test_den)
-    else if ((val[v2] < 0.0 and val[v0] >= 0.0 and val[v1] >= 0.0) or
+    elif ((val[v2] < 0.0 and val[v0] >= 0.0 and val[v1] >= 0.0) or
              (val[v2] > 0.0 and val[v0] <= 0.0 and val[v1] <= 0.0)):
         p1,p2 = find_face_zeros_helper(mesh, v2, v0, v1, val, test_num, test_den)
 
