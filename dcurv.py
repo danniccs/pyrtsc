@@ -122,7 +122,7 @@ def compute_dcurvs(mesh, method="lstsq", normals=None, pointareas=None,
 
     return dcurv
 
-def compute_DwKr(mesh, normals=None, curvs=None, dcurv=None):
+def compute_DwKr(mesh, normals=None, curvs=None, dcurv=None, view_coords=None):
     verts = mesh.vertices.to(device=device)
     faces = mesh.faces.to(device=device)
 
@@ -139,7 +139,8 @@ def compute_DwKr(mesh, normals=None, curvs=None, dcurv=None):
                                cornerareas=cornerareas, curvs=(k1,k2,pdir1,pdir2))
 
     DwKr = torch.zeros(verts.shape[0], dtype=torch.float32).to(device=device)
-    perview = compute_perview(mesh, normals=normals, curvs=(k1,k2,pdir1,pdir2), dcurv=dcurv)
+    perview = compute_perview(mesh, normals=normals, curvs=(k1,k2,pdir1,pdir2),
+                              dcurv=dcurv, view_coords=view_coords)
     ndotv, _, viewdir, _, _ = perview
 
     w = viewdir - normals * ndotv[:,None]

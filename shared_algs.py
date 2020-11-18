@@ -12,7 +12,14 @@ else:
 
 VIEWPOS = torch.tensor([0.0, 0.0, -2.0], dtype=torch.float32).to(device=device)
 
-def compute_perview(mesh, normals=None, curvs=None, dcurv=None, draw_apparent=False):
+#
+#
+# TODO: ADD FEATURE_SIZE CALCULATION
+#
+#
+
+def compute_perview(mesh, normals=None, curvs=None, dcurv=None,
+                    draw_apparent=False, view_coords=None):
     verts = mesh.vertices.to(device=device)
     faces = mesh.faces.to(device=device)
 
@@ -28,9 +35,13 @@ def compute_perview(mesh, normals=None, curvs=None, dcurv=None, draw_apparent=Fa
         dcurv = compute_dcurvs(mesh, normals=normals, pointareas=pointareas,
                                cornerareas=cornerareas, curvs=(k1,k2,pdir1,pdir2))
 
+    if view_coords == None:
+        viewpos = VIEWPOS
+    else:
+        viewpos = view_coords
+
     scthresh = SCTHRESH
     shthresh = SHTHRESH
-    viewpos = VIEWPOS
 
     ndotv = torch.zeros(verts.shape[0], dtype=torch.float32).to(device=device)
     kr = torch.zeros(verts.shape[0], dtype=torch.float32).to(device=device)
