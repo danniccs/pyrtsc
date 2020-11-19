@@ -20,23 +20,18 @@ def rot_coord_sys(old_u, old_v, new_norm):
     old_norm = torch.cross(old_u, old_v, dim=1)
     ndot = (old_norm * new_norm).sum(dim=1)
 
-    for i in range(0, ndot.shape[0]):
-        if ndot[i] <= -1.0:
-            new_u[i] = -new_u[i]
-            new_v[i] = -new_v[i]
-            # Ya no retorno nada, simplemente no toco el valor en este i
-            #return new_u, new_v
-        else:
-            # La componente de new_norm perpendicular a old_norm
-            perp_old[i] = new_norm[i] - ndot[i] * old_norm[i]
+    mask = ndot > 1.0
+    new_u[ndot <= 1.0] = -new_u[ndot <= 1.0]
+    new_v[ndot <= 1.0] = -new_v[ndot <= 1.0]
 
-            # La diferencia de las perpendiculares (de old_norm y new_norm), ya normalizada
-            dperp[i] = 1.0 / (1 + ndot[i]) * (old_norm[i] + new_norm[i])
-
-            # Resta el componente en la perpendicular vieja, y agrega al componente en la nueva
-            # perpendicular
-            new_u[i] -= dperp[i] * (torch.dot(new_u[i], perp_old[i]))
-            new_v[i] -= dperp[i] * (torch.dot(new_v[i], perp_old[i]))
+    # La componente de new_norm perpendicular a old_norm
+    perp_old = new_norm - old_norm * ndot[:,None]
+    # La diferencia de las perpendiculares (de old_norm y new_norm), ya normalizada
+    dperp = torch.reciprocal((old_norm + new_norm) * (ndot + 1.0)[:,None])
+    # Resta el componente en la perpendicular vieja, y agrega al componente en la nueva
+    # perpendicular
+    new_u[mask] = new_u[mask] - (dperp[mask] * (new_u[mask] * perp_old[mask]).sum(dim=1)[:,None])
+    new_v[mask] = new_v[mask] - (dperp[mask] * (new_v[mask] * perp_old[mask]).sum(dim=1)[:,None])
 
     return new_u, new_v
 
@@ -96,11 +91,17 @@ def diagonalize_curv(old_u, old_v, ku, kuv, kv, new_norm):
 
 # Computa las curvaturas principales y sus direcciones sobre la malla
 # method puede ser "lstsq" o "cholesky"
-def compute_curvatures(mesh, method="lstsq"):
+def compute_curvatures(mesh, method="lstsq", normals=None, pointareas=None,
+                       cornerareas=None):
+
     verts = mesh.vertices.to(device=device)
     faces = mesh.faces.to(device=device)
-    normals = compute_simple_vertex_normals(mesh)
-    pointareas, cornerareas = compute_pointareas(mesh)
+
+    if normals == None:
+        normals = compute_simple_vertex_normals(mesh)
+
+    if pointareas == None or cornerareas == None:
+        pointareas, cornerareas = compute_pointareas(mesh)
 
     pdir1 = torch.zeros(verts.shape, dtype=verts.dtype).to(device=device)
     pdir2 = torch.zeros(verts.shape, dtype=verts.dtype).to(device=device)

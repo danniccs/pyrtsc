@@ -130,13 +130,12 @@ def compute_DwKr(mesh, normals=None, curvs=None, dcurv=None, view_coords=None):
         normals = compute_simple_vertex_normals(mesh)
 
     if curvs == None:
-        k1, k2, pdir1, pdir2 = curv.compute_curvatures(mesh)
+        k1, k2, pdir1, pdir2 = curv.compute_curvatures(mesh, normals=normals)
     else:
         k1, k2, pdir1, pdir2 = curvs
 
     if dcurv == None:
-        dcurv = compute_dcurvs(mesh, normals=normals, pointareas=pointareas,
-                               cornerareas=cornerareas, curvs=(k1,k2,pdir1,pdir2))
+        dcurv = compute_dcurvs(mesh, normals=normals, curvs=(k1,k2,pdir1,pdir2))
 
     DwKr = torch.zeros(verts.shape[0], dtype=torch.float32).to(device=device)
     perview = compute_perview(mesh, normals=normals, curvs=(k1,k2,pdir1,pdir2),
@@ -147,13 +146,16 @@ def compute_DwKr(mesh, normals=None, curvs=None, dcurv=None, view_coords=None):
     # Igual que cuando calculo dcurv, uso pdir1[i] y pdir2[i] como base del sistema de
     # coordenadas del vértice i
     u = (w * pdir1).sum(dim=1)
+    u[u > 1.0] = 1.0
     v = (w * pdir2).sum(dim=1)
+    v[v > 1.0] = 1.0
     u2 = u**2
     v2 = v**2
 
-    cosphi = (w * pdir1).sum(dim=1)
+    cosphi = u.clone()
     cos2phi = cosphi**2
     sin2phi = torch.add(-cos2phi, 1.0)
+    # Alternativamente, sinphi = (torch.cross(w, pdir1)).norm() / w.norm()
     sinphi = torch.sqrt(sin2phi)
     kr = k1 * cos2phi + k2 * sin2phi
 

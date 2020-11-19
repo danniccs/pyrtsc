@@ -2,8 +2,8 @@ import torch
 import kaolin as kal
 
 
-SCTHRESH = 0.01
-SHTHRESH = 0.02
+SCTHRESH = 0.0
+SHTHRESH = 0.0
 
 if torch.cuda.is_available():
     device = torch.device('cuda')
@@ -149,5 +149,3 @@ def find_face_zeros(mesh, v0, v1, v2, val, test_num, test_den, ndtov):
         p1,p2 = find_face_zeros_helper(mesh, v2, v0, v1, val, test_num, test_den)
 
     return p1, p2
-
-#def find_zeros(mesh, val, test_num, test_den, ndotv):
