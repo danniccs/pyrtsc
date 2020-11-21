@@ -20,14 +20,14 @@ def rot_coord_sys(old_u, old_v, new_norm):
     old_norm = torch.cross(old_u, old_v, dim=1)
     ndot = (old_norm * new_norm).sum(dim=1)
 
-    mask = ndot > 1.0
-    new_u[ndot <= 1.0] = -new_u[ndot <= 1.0]
-    new_v[ndot <= 1.0] = -new_v[ndot <= 1.0]
+    mask = ndot > -1.0
+    new_u[ndot <= -1.0] = -new_u[ndot <= -1.0]
+    new_v[ndot <= -1.0] = -new_v[ndot <= -1.0]
 
     # La componente de new_norm perpendicular a old_norm
     perp_old = new_norm - old_norm * ndot[:,None]
     # La diferencia de las perpendiculares (de old_norm y new_norm), ya normalizada
-    dperp = torch.reciprocal((old_norm + new_norm) * (ndot + 1.0)[:,None])
+    dperp = (old_norm + new_norm) * torch.reciprocal((ndot + 1.0))[:,None]
     # Resta el componente en la perpendicular vieja, y agrega al componente en la nueva
     # perpendicular
     new_u[mask] = new_u[mask] - (dperp[mask] * (new_u[mask] * perp_old[mask]).sum(dim=1)[:,None])
@@ -62,28 +62,29 @@ def diagonalize_curv(old_u, old_v, ku, kuv, kv, new_norm):
     c = torch.ones(kuv.shape[0], dtype=torch.float32).to(device=device)
     s = torch.zeros(kuv.shape[0], dtype=torch.float32).to(device=device)
     tt = torch.zeros(kuv.shape[0], dtype=torch.float32).to(device=device)
-    for i in range(0, kuv.shape[0]):
-        if kuv[i] != 0.0:
-            # Rotacion Jacobiana para diagonalizar
-            h = 0.5 * (kv[i] - ku[i]) / kuv[i]
-            if h < 0.0:
-                tt[i] = 1.0 / (h - torch.sqrt(1.0 + h**2))
-            else:
-                tt[i] = 1.0 / (h + torch.sqrt(1.0 + h**2))
-            c[i] = 1.0 / torch.sqrt(1.0 + tt[i]**2)
-            s[i] = tt[i] * c[i]
+    
+    # Rotacion Jacobiana para diagonalizar
+    kuvmask = kuv != 0.0
+    h = 0.5 * (kv[kuvmask] - ku[kuvmask]) / kuv[kuvmask]
+    hmask1 = kuvmask == (h < 0.0)
+    hmask2 = kuvmask == (h >= 0.0)
+    tt[hmask1] = torch.reciprocal((h[hmask1] - torch.sqrt(1.0 + h[hmask1]**2)))
+    tt[hmask2] = torch.reciprocal((h[hmask2] + torch.sqrt(1.0 + h[hmask2]**2)))
+    c[kuvmask] = torch.reciprocal(torch.sqrt(1.0 + tt[kuvmask]**2))
+    s[kuvmask] = tt[kuvmask] * c[kuvmask]
 
     k1 = ku - tt * kuv
     k2 = kv + tt * kuv
 
     pdir1 = torch.zeros(old_u.shape, dtype=torch.float32).to(device=device)
 
-    for i in range(0, kuv.shape[0]):
-        if abs(k1[i]) >= abs(k2[i]):
-            pdir1[i] = c[i] * r_old_u[i] - s[i] * r_old_v[i]
-        else:
-            k1[i], k2[i] = k2[i], k1[i]
-            pdir1[i] = s[i] * r_old_u[i] + c[i] * r_old_v[i]
+    posabsmask = torch.abs(k1) >= torch.abs(k2)
+    negabsmask = torch.logical_not(posabsmask)
+    pdir1[posabsmask] = ( c[:,None][posabsmask] * r_old_u[posabsmask]
+                        - s[:,None][posabsmask] * r_old_v[posabsmask])
+    k1[negabsmask], k2[negabsmask] = k2[negabsmask], k1[negabsmask]
+    pdir1[negabsmask] = ( s[:,None][negabsmask] * r_old_u[negabsmask]
+                        + c[:, None][negabsmask] * r_old_v[negabsmask])
 
     pdir2 = torch.cross(new_norm, pdir1, dim=1)
 
@@ -110,10 +111,9 @@ def compute_curvatures(mesh, method="lstsq", normals=None, pointareas=None,
     curv2 = torch.zeros(verts.shape[0], dtype=verts.dtype).to(device=device)
 
     # Creo un sistema de coordenadas inicial por cada vertice
-    for i in range(0, faces.shape[0]):
-        pdir1[faces[i,0]] = verts[faces[i,1]] - verts[faces[i,0]]
-        pdir1[faces[i,1]] = verts[faces[i,2]] - verts[faces[i,1]]
-        pdir1[faces[i,2]] = verts[faces[i,0]] - verts[faces[i,2]]
+    pdir1[faces[:,0]] = verts[faces[:,1]] - verts[faces[:,0]]
+    pdir1[faces[:,1]] = verts[faces[:,2]] - verts[faces[:,1]]
+    pdir1[faces[:,2]] = verts[faces[:,0]] - verts[faces[:,2]]
 
     pdir1 = torch.cross(pdir1, normals)
     pdir1 = torch.nn.functional.normalize(pdir1)

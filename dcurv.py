@@ -146,13 +146,12 @@ def compute_DwKr(mesh, normals=None, curvs=None, dcurv=None, view_coords=None):
     # Igual que cuando calculo dcurv, uso pdir1[i] y pdir2[i] como base del sistema de
     # coordenadas del vértice i
     u = (w * pdir1).sum(dim=1)
-    u[u > 1.0] = 1.0
     v = (w * pdir2).sum(dim=1)
-    v[v > 1.0] = 1.0
     u2 = u**2
     v2 = v**2
 
     cosphi = u.clone()
+    cosphi[cosphi > 1.0] = 1.0
     cos2phi = cosphi**2
     sin2phi = torch.add(-cos2phi, 1.0)
     # Alternativamente, sinphi = (torch.cross(w, pdir1)).norm() / w.norm()
