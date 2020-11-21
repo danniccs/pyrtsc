@@ -111,9 +111,10 @@ def compute_curvatures(mesh, method="lstsq", normals=None, pointareas=None,
     curv2 = torch.zeros(verts.shape[0], dtype=verts.dtype).to(device=device)
 
     # Creo un sistema de coordenadas inicial por cada vertice
-    pdir1[faces[:,0]] = verts[faces[:,1]] - verts[faces[:,0]]
-    pdir1[faces[:,1]] = verts[faces[:,2]] - verts[faces[:,1]]
-    pdir1[faces[:,2]] = verts[faces[:,0]] - verts[faces[:,2]]
+    for i in range(faces.shape[0]):
+        pdir1[faces[i,0]] = verts[faces[i,1]] - verts[faces[i,0]]
+        pdir1[faces[i,1]] = verts[faces[i,2]] - verts[faces[i,1]]
+        pdir1[faces[i,2]] = verts[faces[i,0]] - verts[faces[i,2]]
 
     pdir1 = torch.cross(pdir1, normals)
     pdir1 = torch.nn.functional.normalize(pdir1)
