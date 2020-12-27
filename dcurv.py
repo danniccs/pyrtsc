@@ -153,7 +153,7 @@ def compute_DwKr(mesh, normals=None, curvs=None, dcurv=None, view_coords=None):
     cosphi = u.clone()
     cosphi[cosphi > 1.0] = 1.0
     cos2phi = cosphi**2
-    sin2phi = 1.0 - cosphi
+    sin2phi = 1.0 - cos2phi
     # Alternativamente, sinphi = (torch.cross(w, pdir1)).norm() / w.norm()
     sinphi = torch.sqrt(sin2phi)
     kr = k1 * cos2phi + k2 * sin2phi
@@ -163,7 +163,12 @@ def compute_DwKr(mesh, normals=None, curvs=None, dcurv=None, view_coords=None):
            + v2 * (3.0*u*dcurv[:,2] + v*dcurv[:,3]))
 
     K = k1 * k2
-    cot = cosphi / sinphi
+
+    cos2theta = ndotv**2
+    sin2theta = 1 - cos2theta
+    sintheta = torch.sqrt(sin2theta)
+    cot = ndotv / sintheta
+
     DwKr += 2.0 * K * cot
 
     return DwKr, kr
@@ -210,7 +215,12 @@ def compute_DwKr_alt(mesh, normals=None, curvs=None, dcurv=None, view_coords=Non
            + v2 * (3.0*u*dcurv[:,2] + v*dcurv[:,3]))
 
     K = k1 * k2
-    cot = cosphi / sinphi
+
+    cos2theta = ndotv**2
+    sin2theta = 1 - cos2theta
+    sintheta = torch.sqrt(sin2theta)
+    cot = ndotv / sintheta
+
     DwKr += 2.0 * K * cot
 
     return DwKr, kr
