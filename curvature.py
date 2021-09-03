@@ -62,10 +62,11 @@ def diagonalize_curv(old_u, old_v, ku, kuv, kv, new_norm):
     c = torch.ones(kuv.shape[0], dtype=torch.float32).to(device=device)
     s = torch.zeros(kuv.shape[0], dtype=torch.float32).to(device=device)
     tt = torch.zeros(kuv.shape[0], dtype=torch.float32).to(device=device)
+    h = torch.zeros(kuv.shape[0], dtype=torch.float32).to(device=device)
     
     # Rotacion Jacobiana para diagonalizar
     kuvmask = kuv != 0.0
-    h = 0.5 * (kv[kuvmask] - ku[kuvmask]) / kuv[kuvmask]
+    h[kuvmask] = 0.5 * (kv[kuvmask] - ku[kuvmask]) / kuv[kuvmask]
     hmask1 = kuvmask == (h < 0.0)
     hmask2 = kuvmask == (h >= 0.0)
     tt[hmask1] = torch.reciprocal((h[hmask1] - torch.sqrt(1.0 + h[hmask1]**2)))
@@ -84,7 +85,7 @@ def diagonalize_curv(old_u, old_v, ku, kuv, kv, new_norm):
                         - s[:,None][posabsmask] * r_old_v[posabsmask])
     k1[negabsmask], k2[negabsmask] = k2[negabsmask], k1[negabsmask]
     pdir1[negabsmask] = ( s[:,None][negabsmask] * r_old_u[negabsmask]
-                        + c[:, None][negabsmask] * r_old_v[negabsmask])
+                        + c[:,None][negabsmask] * r_old_v[negabsmask])
 
     pdir2 = torch.cross(new_norm, pdir1, dim=1)
 

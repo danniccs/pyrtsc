@@ -70,10 +70,9 @@ def compute_perview(mesh, normals=None, curvs=None, dcurv=None,
     tr = (k2 - k1) * u * v * csc2theta
     sctest_num -= 2.0 * ndotv * tr**2
 
-    sctest_den = ndotv
-    sctest_num -= scthresh * sctest_den
+    sctest_num -= scthresh * ndotv
 
-    return ndotv, kr, viewdir, sctest_num, sctest_den
+    return ndotv, kr, viewdir, sctest_num, ndotv
 
 def find_zero_linear(val0, val1):
     return val0 / (val0 - val1)
