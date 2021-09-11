@@ -10,7 +10,7 @@ if torch.cuda.is_available():
 else:
     device = torch.device('cpu')
 
-VIEWPOS = torch.tensor([0.0, 0.0, -2.0], dtype=torch.float32).to(device=device)
+VIEWPOS = torch.tensor([-0.0197765, 0.107956, 0.489623], dtype=torch.float32).to(device=device)
 
 #
 #

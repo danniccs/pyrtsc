@@ -91,6 +91,40 @@ def diagonalize_curv(old_u, old_v, ku, kuv, kv, new_norm):
 
     return pdir1, pdir2, k1, k2
 
+def diagonalize_curv_alt(old_u, old_v, ku, kuv, kv, new_norm):
+    r_old_u, r_old_v = rot_coord_sys(old_u, old_v, new_norm)
+
+    k1 = torch.ones(kuv.shape[0], dtype=torch.float32).to(device=device)
+    k2 = torch.zeros(kuv.shape[0], dtype=torch.float32).to(device=device)
+    pdir1 = torch.zeros(old_u.shape, dtype=torch.float32).to(device=device)
+    pdir2 = torch.zeros(old_u.shape, dtype=torch.float32).to(device=device)
+    
+    # Rotacion Jacobiana para diagonalizar
+    for i in range(0, kuv.shape[0]):
+        if kuv[i] != 0.0:
+            h = 0.5 * (kv[i] - ku[i]) / kuv[i]
+            if h < 0.0:
+                tt = 1.0 / (h - torch.sqrt(1.0 + h*h))
+            else:
+                tt = 1.0 / (h + torch.sqrt(1.0 + h*h))
+            c = 1.0 / torch.sqrt(1.0 + tt*tt)
+            s = tt * c
+
+        k1[i] = ku[i] - tt * kuv[i]
+        k2[i] = kv[i] + tt * kuv[i]
+
+        if (torch.abs(k1[i]) >= torch.abs(k2[i])):
+            pdir1[i] = c*r_old_u[i] - s*r_old_v[i]
+        else:
+            temp = k1[i]
+            k1[i] = k2[i]
+            k2[i] = temp
+            pdir1[i] = s*r_old_u[i] + c*r_old_v[i]
+
+        pdir2[i] = torch.cross(new_norm[i], pdir1[i])
+
+    return pdir1, pdir2, k1, k2
+
 # Computa las curvaturas principales y sus direcciones sobre la malla
 # method puede ser "lstsq" o "cholesky"
 def compute_curvatures(mesh, method="lstsq", normals=None, pointareas=None,

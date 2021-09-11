@@ -170,6 +170,7 @@ def compute_DwKr(mesh, normals=None, curvs=None, dcurv=None, view_coords=None):
     cot = ndotv / sintheta
 
     DwKr += 2.0 * K * cot
+    DwKr *= sintheta
 
     return DwKr, kr
 
