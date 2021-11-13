@@ -1,5 +1,4 @@
 import torch
-import meshplot as mp
 import numpy as np
 
 
@@ -60,10 +59,3 @@ def compute_pointareas(mesh):
             pointareas[faces[i,2]] += cornerareas[i,2]
 
     return pointareas, cornerareas
-
-def visualize_pointareas(mesh, areas):
-    max_area = torch.max(areas)
-    red_areas = areas / max_area
-    color_areas = torch.zeros(mesh.vertices.shape, dtype=mesh.vertices.dtype)
-    color_areas[:,0] = red_areas
-    mp.plot(mesh.vertices.numpy(), mesh.faces.numpy(), c=color_areas.numpy())

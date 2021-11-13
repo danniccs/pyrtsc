@@ -1,7 +1,5 @@
 import torch
-import kaolin as kal
 import numpy as np
-import meshplot as mp
 from normals_lib import compute_simple_vertex_normals
 from pointareas import compute_pointareas
 
@@ -125,8 +123,8 @@ def diagonalize_curv_alt(old_u, old_v, ku, kuv, kv, new_norm):
 
     return pdir1, pdir2, k1, k2
 
-# Computa las curvaturas principales y sus direcciones sobre la malla
-# method puede ser "lstsq" o "cholesky"
+# Compute the principal curvatures and their directions on the mesh.
+# The method for least squares can be lstsq or cholesky.
 def compute_curvatures(mesh, method="lstsq", normals=None, pointareas=None,
                        cornerareas=None):
 

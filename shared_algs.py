@@ -1,5 +1,4 @@
 import torch
-import kaolin as kal
 
 
 SCTHRESH = 0.0
@@ -49,7 +48,7 @@ def compute_perview(mesh, normals=None, curvs=None, dcurv=None,
     sctest_num = torch.zeros(verts.shape[0], dtype=torch.float32).to(device=device)
     sctest_den = torch.zeros(verts.shape[0], dtype=torch.float32).to(device=device)
 
-    # Computar n.v
+    # Compute n.v
     viewdir = -verts + viewpos
     viewdir = torch.nn.functional.normalize(viewdir)
     ndotv = (viewdir * normals).sum(dim=1)
@@ -59,10 +58,10 @@ def compute_perview(mesh, normals=None, curvs=None, dcurv=None,
     u2 = u**2
     v2 = v**2
 
-    # Esto en realidad es Kr * sin^2(theta)
+    # This is actually Kr * sin^2(theta)
     kr = k1 * u2 + k2 * v2
 
-    # Uso DwKr * tan(theta) como umbral
+    # We use DwKr*tan(theta) as threshold
     sctest_num = ( u2 * (u*dcurv[:,0] + 3.0*v*dcurv[:,1])
                  + v2 * (3.0*u*dcurv[:,2] + v*dcurv[:,3]))
     csc2theta = torch.reciprocal(u2 + v2)

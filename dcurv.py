@@ -150,10 +150,11 @@ def compute_DwKr(mesh, normals=None, curvs=None, dcurv=None, view_coords=None):
     u2 = u**2
     v2 = v**2
 
-    cosphi = u.clone()
-    cosphi[cosphi > 1.0] = 1.0
+    cosphi = u.clone() / w.norm(dim=1)
+    #cosphi[cosphi > 1.0] = 1.0
     cos2phi = cosphi**2
     sin2phi = 1.0 - cos2phi
+    sin2phi[sin2phi < 0.0] = 0.0
     # Alternativamente, sinphi = (torch.cross(w, pdir1)).norm() / w.norm()
     sinphi = torch.sqrt(sin2phi)
     kr = k1 * cos2phi + k2 * sin2phi

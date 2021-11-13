@@ -1,7 +1,5 @@
 import torch
-import kaolin as kal
 import numpy as np
-import meshplot as mp
 
 
 if torch.cuda.is_available():
