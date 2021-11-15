@@ -131,7 +131,7 @@ def diagonalize_curv_alt(old_u, old_v, ku, kuv, kv, new_norm):
 Compute the principal curvatures and their directions on the mesh.
 The method for least squares can be lstsq or cholesky.
 """
-def compute_curvatures(mesh, method="lstsq", normals=None, pointareas=None,
+def compute_curvatures(mesh, method="cholesky", normals=None, pointareas=None,
                        cornerareas=None):
 
     verts = mesh.vertices.to(device=device)

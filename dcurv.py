@@ -45,7 +45,7 @@ def proj_dcurv(old_u, old_v, old_dcurv, new_u, new_v):
 """
 Compute the derivatives of curvature (C) at each vertex
 """
-def compute_dcurvs(mesh, method="lstsq", normals=None, pointareas=None,
+def compute_dcurvs(mesh, method="cholesky", normals=None, pointareas=None,
                    cornerareas=None, curvs=None):
 
     verts = mesh.vertices.to(device=device)
@@ -126,7 +126,7 @@ def compute_dcurvs(mesh, method="lstsq", normals=None, pointareas=None,
 Calculate the directional derivative of radial curvature in the direction
 of the camera.
 """
-def compute_DwKr(mesh, normals=None, curvs=None, dcurv=None, viewCoords=VIEWPOS):
+def compute_DwKr(mesh, normals=None, curvs=None, dcurv=None, viewPos=VIEWPOS):
     verts = mesh.vertices.to(device=device)
     faces = mesh.faces.to(device=device)
 
@@ -142,10 +142,10 @@ def compute_DwKr(mesh, normals=None, curvs=None, dcurv=None, viewCoords=VIEWPOS)
         dcurv = compute_dcurvs(mesh, normals=normals, curvs=(k1,k2,pdir1,pdir2))
 
     DwKr = torch.zeros(verts.shape[0], dtype=torch.float32).to(device=device)
-    viewdir = -verts + viewpos
-    ndotv = (viewdir * normals).sum(dim=1)
+    viewDir = -verts + viewPos
+    ndotv = (viewDir * normals).sum(dim=1)
 
-    w = viewdir - normals * ndotv[:,None]
+    w = viewDir - normals * ndotv[:,None]
 
     # Just as when calculating C, use pdir1 and pdir2 as bases for a coordinate system.
     u = (w * pdir1).sum(dim=1)
@@ -166,12 +166,8 @@ def compute_DwKr(mesh, normals=None, curvs=None, dcurv=None, viewCoords=VIEWPOS)
 
     K = k1 * k2
 
-    cos2theta = ndotv**2
-    sin2theta = 1 - cos2theta
-    sintheta = torch.sqrt(sin2theta)
-    cot = ndotv / sintheta
-
-    DwKr += 2.0 * K * cot
-    DwKr *= sintheta
+    # cot = cos/sin, and sin(theta) = ||w|| and cos(theta) = n.v
+    DwKr *= w.norm(dim=1)
+    DwKr += 2.0 * K * ndotv
 
     return DwKr, kr

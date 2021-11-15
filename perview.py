@@ -12,6 +12,11 @@ VIEWPOS = torch.tensor([0.0, 0.0, -2], dtype=torch.float32).to(device=device)
 TODO: ADD FEATURE_SIZE CALCULATION
 """
 
+"""
+Compute geometric properties used for drawing Suggestive Contours,
+as seen in rtsc (https://gfx.cs.princeton.edu/proj/sugcon/), except
+we combine sctest_num and sctest_den into one variable.
+"""
 def compute_perview(mesh, normals=None, curvs=None, dcurv=None,
                     scthresh=0.0, viewPos=VIEWPOS):
     verts = mesh.vertices.to(device=device)
@@ -47,14 +52,15 @@ def compute_perview(mesh, normals=None, curvs=None, dcurv=None,
     # This is actually Kr * sin^2(theta)
     kr = k1 * u2 + k2 * v2
 
-    # We use DwKr*tan(theta) as threshold
+    # We use DwKr*tan(theta) as our threshold
     sctest = ( u2 * (u*dcurv[:,0] + 3.0*v*dcurv[:,1])
-                 + v2 * (3.0*u*dcurv[:,2] + v*dcurv[:,3]))
+             + v2 * (3.0*u*dcurv[:,2] + v*dcurv[:,3]))
     csc2theta = torch.reciprocal(u2 + v2)
     sctest *= csc2theta
     tr = (k2 - k1) * u * v * csc2theta
     sctest -= 2.0 * ndotv * tr**2
 
     sctest -= scthresh * ndotv
+    sctest /= ndotv
 
-    return ndotv, kr, viewdir, sctestNum, ndotv
+    return ndotv, kr, viewdir, sctest

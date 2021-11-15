@@ -14,21 +14,21 @@ def compute_pointareas(mesh):
     verts = mesh.vertices.to(device=device)
     faces = mesh.faces.to(device=device)
 
-    # Conseguir vectores de bordes
+    # Triangle edges.
     e0 = verts[faces[:,2]] - verts[faces[:,1]]
     e1 = verts[faces[:,0]] - verts[faces[:,2]]
     e2 = verts[faces[:,1]] - verts[faces[:,0]]
 
-    # Computar los pesos en cada esquina, basados en el area
+    # Compute weights at each corner, based on the area
     area = 0.5 * torch.norm(torch.cross(e0, e1), dim=1)
     l2 = torch.stack([norm_sq(e0, 1), norm_sq(e1, 1), norm_sq(e2, 1)], dim=1)
 
-    # Pesos baricéntricos del circumcentro
+    # Barycentric weights
     bcw = torch.stack([l2[:,0] * (l2[:,1] + l2[:,2] - l2[:,0]),
                        l2[:,1] * (l2[:,2] + l2[:,0] - l2[:,1]),
                        l2[:,2] * (l2[:,0] + l2[:,1] - l2[:,2])], dim=1)
 
-    # Calculo las areas en las esquinas en base a los pesos baricéntricos
+    # Calculate the areas at each corner based on the barycentric weights
     pointareas = torch.zeros(verts.shape[0], dtype=verts.dtype).to(device=device)
     cornerareas = torch.zeros(faces.shape, dtype=verts.dtype).to(device=device)
 

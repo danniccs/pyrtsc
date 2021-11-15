@@ -1,4 +1,4 @@
-###### pyrtsc: Extraction of geometric properties from 3D models using PyTorch
+# pyrtsc: Extraction of geometric properties from 3D models using PyTorch
 
 ### Overview
 
@@ -15,7 +15,7 @@ This library requires:
 - [Numpy](https://numpy.org/) 1.19.2 or greater.
 
 Also recommended, but not required:
-- CUDA 10.1 or higher ([PyTorch](https://pytorch.org/) has instructions to install CUDA)
+- CUDA 10.1 or higher ([PyTorch](https://pytorch.org/) has instructions for installing CUDA)
 to speed up processing.
 - A library such as [Kaolin](https://github.com/NVIDIAGameWorks/kaolin) to load 3D models.
 
@@ -25,11 +25,10 @@ To use the library simply download the repository and import pyrtsc into your pr
 
 Using the library is quite simple:
 - Load a triangular mesh.
-- Import pyrtsc.
-- Use curvature.compute_curvatures to calculate principal curvatures and their directions.
-- Use dcurv.compute_dcurvs to calculate the derivative of curvature tensors.
-- Use compute_perview to calculate the geometric properties used for Suggestive Contours.
-- You can also use compute_simple_normals and compute_max_normals to compute per-vertex normals.
+- Import curvature.compute_curvatures to calculate principal curvatures and their directions.
+- Import dcurv.compute_dcurvs to calculate the derivative of curvature tensors.
+- Import perview.compute_perview to calculate some of the geometric properties used for
+  Suggestive Contours.
 
 You can find a usage example in the visualization.ipynb jupyter notebook. For this visualization
 you need all the libraries entioned in Requirements, plus:

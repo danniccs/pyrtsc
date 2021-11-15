@@ -7,10 +7,10 @@ if torch.cuda.is_available():
 else:
     device = torch.device('cpu')
 
+"""
+Calculate the areas of each triangle using the cross product of the edges.
+"""
 def compute_face_areas(mesh):
-    """
-    Calculate the areas of each triangle using the cross product of the edges.
-    """
     faces = mesh.faces.to(device=device)
     verts = mesh.vertices.to(device=device)
 
@@ -20,11 +20,11 @@ def compute_face_areas(mesh):
 
     return face_areas
 
+"""
+Calculate the normals at each vertex using the normal of each triangle
+and weighting using the area of the triangles.
+"""
 def compute_simple_normals(mesh):
-    """
-    Calculate the normals at each vertex using the normal of each triangle
-    and weighting using the area of the triangles.
-    """
     faces = mesh.faces.to(device=device)
     verts = mesh.vertices.to(device=device)
 
@@ -42,6 +42,11 @@ def compute_simple_normals(mesh):
 
     return vertexNormals
 
+"""
+Calculate the normals at each vertex using the algorithm described in
+Nelson Max, Weights for computing vertex normals from facet normals.
+Journal of graphics tools, 1999.
+"""
 def compute_max_normals(mesh):
     faces = mesh.faces.to(device=device)
     verts = mesh.vertices.to(device=device)
