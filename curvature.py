@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from normals_lib import compute_simple_vertex_normals
+from normals_lib import compute_simple_normals
 from pointareas import compute_pointareas
 
 
@@ -9,7 +9,9 @@ if torch.cuda.is_available():
 else:
     device = torch.device('cpu')
 
-# Funcion para rotar un sistema de coordenadas para que sea perpendicular a la normal dada
+"""
+Function to rotate a coordinate system so it is perpendicular to the given normal.
+"""
 def rot_coord_sys(old_u, old_v, new_norm):
     new_u = old_u.clone()
     new_v = old_v.clone()
@@ -33,12 +35,13 @@ def rot_coord_sys(old_u, old_v, new_norm):
 
     return new_u, new_v
 
-# Funcion para reproyectar un tensor de curvatura de una base (old_u, old_v)
-# a una base (new_u, new_v)
+"""
+Reproject a curvature tensor from one base to a new one.
+"""
 def proj_curv(old_u, old_v, old_ku, old_kuv, old_kv, new_u, new_v):
     r_new_u, r_new_v = rot_coord_sys(new_u, new_v, torch.cross(old_u, old_v, dim=1))
 
-    # Productos punto entre r_new_u[i] y old_u[i] para todo i
+    # Dot product between r_new_u[i] and old_u[i] for all i
     u1 = (r_new_u * old_u).sum(dim=1)
     v1 = (r_new_u * old_v).sum(dim=1)
     u2 = (r_new_v * old_u).sum(dim=1)
@@ -50,10 +53,11 @@ def proj_curv(old_u, old_v, old_ku, old_kuv, old_kv, new_u, new_v):
 
     return new_ku, new_kuv, new_kv
 
-# Dado un tensor de curvatura (el mapa fundamental II), esta funcion encuentra
-# las direcciones de curvatura principales y las curvaturas principales.
-# (Estas son equivalentes a los autovectores y autovalores de la matriz, respectivamente)
-# Asegura que pdir1 y pdir2 son perpendiculares a la normal.
+"""
+Given the second fundamental form (II), this function calculates the principal
+curvatures and their directions. These are equivalent to the eigenvalues and
+eigenvectors (respectively) of the tensor.
+"""
 def diagonalize_curv(old_u, old_v, ku, kuv, kv, new_norm):
     r_old_u, r_old_v = rot_coord_sys(old_u, old_v, new_norm)
 
@@ -62,7 +66,7 @@ def diagonalize_curv(old_u, old_v, ku, kuv, kv, new_norm):
     tt = torch.zeros(kuv.shape[0], dtype=torch.float32).to(device=device)
     h = torch.zeros(kuv.shape[0], dtype=torch.float32).to(device=device)
     
-    # Rotacion Jacobiana para diagonalizar
+    # Jacobi rotation to diagonalize
     kuvmask = kuv != 0.0
     h[kuvmask] = 0.5 * (kv[kuvmask] - ku[kuvmask]) / kuv[kuvmask]
     hmask1 = kuvmask == (h < 0.0)
@@ -97,7 +101,7 @@ def diagonalize_curv_alt(old_u, old_v, ku, kuv, kv, new_norm):
     pdir1 = torch.zeros(old_u.shape, dtype=torch.float32).to(device=device)
     pdir2 = torch.zeros(old_u.shape, dtype=torch.float32).to(device=device)
     
-    # Rotacion Jacobiana para diagonalizar
+    # Jacobi rotation to diagonalize
     for i in range(0, kuv.shape[0]):
         if kuv[i] != 0.0:
             h = 0.5 * (kv[i] - ku[i]) / kuv[i]
@@ -123,8 +127,10 @@ def diagonalize_curv_alt(old_u, old_v, ku, kuv, kv, new_norm):
 
     return pdir1, pdir2, k1, k2
 
-# Compute the principal curvatures and their directions on the mesh.
-# The method for least squares can be lstsq or cholesky.
+"""
+Compute the principal curvatures and their directions on the mesh.
+The method for least squares can be lstsq or cholesky.
+"""
 def compute_curvatures(mesh, method="lstsq", normals=None, pointareas=None,
                        cornerareas=None):
 
@@ -132,7 +138,7 @@ def compute_curvatures(mesh, method="lstsq", normals=None, pointareas=None,
     faces = mesh.faces.to(device=device)
 
     if normals == None:
-        normals = compute_simple_vertex_normals(mesh)
+        normals = compute_simple_normals(mesh)
 
     if pointareas == None or cornerareas == None:
         pointareas, cornerareas = compute_pointareas(mesh)
@@ -143,7 +149,7 @@ def compute_curvatures(mesh, method="lstsq", normals=None, pointareas=None,
     curv12 = torch.zeros(verts.shape[0], dtype=verts.dtype).to(device=device)
     curv2 = torch.zeros(verts.shape[0], dtype=verts.dtype).to(device=device)
 
-    # Creo un sistema de coordenadas inicial por cada vertice
+    # Create an initial coordinate system for each vertex
     for i in range(faces.shape[0]):
         pdir1[faces[i,0]] = verts[faces[i,1]] - verts[faces[i,0]]
         pdir1[faces[i,1]] = verts[faces[i,2]] - verts[faces[i,1]]
@@ -155,14 +161,14 @@ def compute_curvatures(mesh, method="lstsq", normals=None, pointareas=None,
 
     edges = torch.zeros(list(faces.shape) + [3], dtype=verts.dtype).to(device=device)
 
-    # Computar curvatura por cara
+    # Compute the curvature of each face
     for i in range(0, faces.shape[0]):
         # Bordes
         edges[i] = torch.stack([verts[faces[i,2]] - verts[faces[i,1]],
                                 verts[faces[i,0]] - verts[faces[i,2]],
                                 verts[faces[i,1]] - verts[faces[i,0]]], dim=0)
 
-    # Uso el marco de Frenet por cada cara
+    # Use the Frenet frame at each face
     t = edges[:,0]
     t = torch.nn.functional.normalize(t, dim=1)
     n = torch.cross(edges[:,0], edges[:,1])
@@ -172,7 +178,7 @@ def compute_curvatures(mesh, method="lstsq", normals=None, pointareas=None,
     m = torch.zeros(faces.shape[0], 3, 1, dtype=torch.float32).to(device=device)
     w = torch.zeros(faces.shape[0], 3, 3, dtype=torch.float32).to(device=device)
 
-    # Estimo la curvatura basado en la variacion de las normales
+    # Estimate the curvature based on the variation of normals
     for j in range(0, 3):
         u = (edges[:,j] * t).sum(dim=1)
         v = (edges[:,j] * b).sum(dim=1)
@@ -191,29 +197,26 @@ def compute_curvatures(mesh, method="lstsq", normals=None, pointareas=None,
     w[:,1,2] = w[:,0,1]
 
     for i in range(0, faces.shape[0]):
-        # Encuentro la solucion de minimos cuadrados
-        # Agregué un if para seleccionar un método
+        # Use least squares to approximate a solution
         if method == "lstsq":
             m[i] = torch.lstsq(m[i], w[i]).solution
         elif method == "cholesky":
             chol = torch.cholesky(w[i])
             m[i] = torch.cholesky_solve(m[i], chol)
 
-    # Sumar los valores computados en los vertices
+    # Sum the computed values at each vertex
     for j in range(0, 3):
         vj = faces[:,j]
         c1, c12, c2 = proj_curv(t, b, m[:,0].flatten(), m[:,1].flatten(), m[:,2].flatten(),
                                 pdir1[vj], pdir2[vj])
 
         wt = cornerareas[:,j] / pointareas[vj]
-        # Sumo a curvx[i] el producto de wt[i] y cx[i]
-        # Esto debo hacerlo con un for para evitar errores de sincronización
+        # This next part must be done inside a for to avoid race conditions
         for i in range(0, faces.shape[0]):
             curv1[vj[i]] += wt[i] * c1[i]
             curv12[vj[i]] += wt[i] * c12[i]
             curv2[vj[i]] += wt[i] * c2[i]
 
-    # Computo direcciones y curvaturas principales en cada vertice
     pdir1, pdir2, curv1, curv2 = diagonalize_curv(pdir1, pdir2, curv1, curv12, curv2, normals)
 
     return curv1, curv2, pdir1, pdir2

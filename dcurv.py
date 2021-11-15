@@ -1,9 +1,9 @@
 import torch
 import math
 import curvature as curv
-from normals_lib import compute_simple_vertex_normals
+from normals_lib import compute_simple_normals
 from pointareas import compute_pointareas
-from shared_algs import compute_perview, VIEWPOS
+from perview import VIEWPOS
 
 
 if torch.cuda.is_available():
@@ -11,7 +11,9 @@ if torch.cuda.is_available():
 else:
     device = torch.device('cpu')
 
-# Igual que proj_curv pero para derivadas de curvatura
+"""
+Same as proj_curv but for derivatives of curvature
+"""
 def proj_dcurv(old_u, old_v, old_dcurv, new_u, new_v):
     r_new_u, r_new_v = curv.rot_coord_sys(new_u, new_v, torch.cross(old_u, old_v, dim=1))
 
@@ -40,14 +42,16 @@ def proj_dcurv(old_u, old_v, old_dcurv, new_u, new_v):
 
     return new_dcurv
 
-# Computa las derivadas de las curvaturas
+"""
+Compute the derivatives of curvature (C) at each vertex
+"""
 def compute_dcurvs(mesh, method="lstsq", normals=None, pointareas=None,
                    cornerareas=None, curvs=None):
 
     verts = mesh.vertices.to(device=device)
     faces = mesh.faces.to(device=device)
     if normals == None:
-        normals = compute_simple_vertex_normals(mesh)
+        normals = compute_simple_normals(mesh)
 
     if pointareas == None or cornerareas == None:
         pointareas, cornerareas = compute_pointareas(mesh)
@@ -66,7 +70,7 @@ def compute_dcurvs(mesh, method="lstsq", normals=None, pointareas=None,
                                 verts[faces[i,0]] - verts[faces[i,2]],
                                 verts[faces[i,1]] - verts[faces[i,0]]], dim=0)
 
-    # Uso el marco de Frenet por cada cara
+    # Use the Frenet frame at each face
     t = edges[:,0]
     t = torch.nn.functional.normalize(t, dim=1)
     n = torch.cross(edges[:,0], edges[:,1])
@@ -79,11 +83,7 @@ def compute_dcurvs(mesh, method="lstsq", normals=None, pointareas=None,
         fcurv[:,j,0], fcurv[:,j,1], fcurv[:,j,2] = curv.proj_curv(pdir1[vj], pdir2[vj],
                                                                   k1[vj], 0, k2[vj], t, b)
 
-    # Proyecto de las coordenadas de cada vertice a las coordenadas de la cara
-    # creadas en el paso anterior
-
-    # Estimo la derivada de curvatura usando la variacion de la curvatura
-    # en los bordes de la cara
+    # Estimate C using the variation of curvature across the edges of the triangle
     m = torch.zeros(faces.shape[0], 4, 1, dtype=torch.float32).to(device=device)
     w = torch.zeros(faces.shape[0], 4, 4, dtype=torch.float32).to(device=device)
     for j in range(0, 3):
@@ -104,7 +104,7 @@ def compute_dcurvs(mesh, method="lstsq", normals=None, pointareas=None,
     w[:,2,2] = w[:,0,0] + 2 * w[:,3,3]
     w[:,2,3] = w[:,0,1]
 
-    # Encuentro la solucion de minimos cuadrados
+    # Use least squares to approximate a solution
     for i in range(0, faces.shape[0]):
         if method == "lstsq":
             m[i] = torch.lstsq(m[i], w[i]).solution
@@ -112,7 +112,7 @@ def compute_dcurvs(mesh, method="lstsq", normals=None, pointareas=None,
             chol = torch.cholesky(w[i])
             m[i] = torch.cholesky_solve(m[i], chol)
 
-    # Paso los valores a cada vertice
+    # Propagate the values to the vertices
     for j in range(0, 3):
         vj = faces[:,j]
         vert_dcurv = proj_dcurv(t, b, m.view(m.shape[0], m.shape[1]), pdir1[vj], pdir2[vj])
@@ -122,12 +122,16 @@ def compute_dcurvs(mesh, method="lstsq", normals=None, pointareas=None,
 
     return dcurv
 
-def compute_DwKr(mesh, normals=None, curvs=None, dcurv=None, view_coords=None):
+"""
+Calculate the directional derivative of radial curvature in the direction
+of the camera.
+"""
+def compute_DwKr(mesh, normals=None, curvs=None, dcurv=None, viewCoords=VIEWPOS):
     verts = mesh.vertices.to(device=device)
     faces = mesh.faces.to(device=device)
 
     if normals == None:
-        normals = compute_simple_vertex_normals(mesh)
+        normals = compute_simple_normals(mesh)
 
     if curvs == None:
         k1, k2, pdir1, pdir2 = curv.compute_curvatures(mesh, normals=normals)
@@ -138,24 +142,21 @@ def compute_DwKr(mesh, normals=None, curvs=None, dcurv=None, view_coords=None):
         dcurv = compute_dcurvs(mesh, normals=normals, curvs=(k1,k2,pdir1,pdir2))
 
     DwKr = torch.zeros(verts.shape[0], dtype=torch.float32).to(device=device)
-    perview = compute_perview(mesh, normals=normals, curvs=(k1,k2,pdir1,pdir2),
-                              dcurv=dcurv, view_coords=view_coords)
-    ndotv, _, viewdir, _, _ = perview
+    viewdir = -verts + viewpos
+    ndotv = (viewdir * normals).sum(dim=1)
 
     w = viewdir - normals * ndotv[:,None]
-    # Igual que cuando calculo dcurv, uso pdir1[i] y pdir2[i] como base del sistema de
-    # coordenadas del vértice i
+
+    # Just as when calculating C, use pdir1 and pdir2 as bases for a coordinate system.
     u = (w * pdir1).sum(dim=1)
     v = (w * pdir2).sum(dim=1)
     u2 = u**2
     v2 = v**2
 
     cosphi = u.clone() / w.norm(dim=1)
-    #cosphi[cosphi > 1.0] = 1.0
     cos2phi = cosphi**2
     sin2phi = 1.0 - cos2phi
     sin2phi[sin2phi < 0.0] = 0.0
-    # Alternativamente, sinphi = (torch.cross(w, pdir1)).norm() / w.norm()
     sinphi = torch.sqrt(sin2phi)
     kr = k1 * cos2phi + k2 * sin2phi
 
@@ -172,57 +173,5 @@ def compute_DwKr(mesh, normals=None, curvs=None, dcurv=None, view_coords=None):
 
     DwKr += 2.0 * K * cot
     DwKr *= sintheta
-
-    return DwKr, kr
-
-def compute_DwKr_alt(mesh, normals=None, curvs=None, dcurv=None, view_coords=None):
-    verts = mesh.vertices.to(device=device)
-    faces = mesh.faces.to(device=device)
-
-    if normals == None:
-        normals = compute_simple_vertex_normals(mesh)
-
-    if curvs == None:
-        k1, k2, pdir1, pdir2 = curv.compute_curvatures(mesh, normals=normals)
-    else:
-        k1, k2, pdir1, pdir2 = curvs
-
-    if dcurv == None:
-        dcurv = compute_dcurvs(mesh, normals=normals, curvs=(k1,k2,pdir1,pdir2))
-
-    DwKr = torch.zeros(verts.shape[0], dtype=torch.float32).to(device=device)
-    perview = compute_perview(mesh, normals=normals, curvs=(k1,k2,pdir1,pdir2),
-                              dcurv=dcurv, view_coords=view_coords)
-    ndotv, _, viewdir, _, _ = perview
-
-    w = viewdir - normals * ndotv[:,None]
-    # Igual que cuando calculo dcurv, uso pdir1[i] y pdir2[i] como base del sistema de
-    # coordenadas del vértice i
-    u = (w * pdir1).sum(dim=1)
-    v = (w * pdir2).sum(dim=1)
-    u2 = u**2
-    v2 = v**2
-
-    cosphi = u.clone() / w.norm(dim=1)
-    cosphi[cosphi > 1.0] = 1.0
-    cos2phi = cosphi**2
-    sin2phi = 1.0 - cos2phi
-    # Alternativamente, sinphi = (torch.cross(w, pdir1)).norm() / w.norm()
-    sin2phi[sin2phi < 0.0] = 0.0
-    sinphi = torch.sqrt(sin2phi)
-    kr = k1 * cos2phi + k2 * sin2phi
-
-    # DwKr = C(w,w,w) + 2Kcot(theta)
-    DwKr = ( u2 * (u*dcurv[:,0] + 3.0*v*dcurv[:,1])
-           + v2 * (3.0*u*dcurv[:,2] + v*dcurv[:,3]))
-
-    K = k1 * k2
-
-    cos2theta = ndotv**2
-    sin2theta = 1 - cos2theta
-    sintheta = torch.sqrt(sin2theta)
-    cot = ndotv / sintheta
-
-    DwKr += 2.0 * K * cot
 
     return DwKr, kr
